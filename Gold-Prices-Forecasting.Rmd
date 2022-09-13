@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # 1. Introduction
 
-This report discusses the various attempts at tackling a challenge of forecasting gold prices relatively accurately. The gold prices data are obtained from: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv which is a time series data frame pre-processed from https://in.investing.com/commodities/gold-mini by Nisarg Chodavadiya.
+This report discusses the various attempts at tackling a challenge of forecasting gold mini futures prices relatively accurately. The gold mini futures prices are measures in Indian Rupee (INR) and the data are obtained from: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv which is a time series data frame pre-processed from https://in.investing.com/commodities/gold-mini by Nisarg Chodavadiya.
 
 The Gold Price dataset has 2227 rows and 7 columns. These include Date, Price, Open, High, Low, Volume, and Change. Date starts from 1 January 2014 and ends with 5 August 2022. Price reflects the closing prices for that day, while Open is the opening prices. High and Low gives the highest and lowest prices reached in intra-day trading, and Volume shows the volume of trading for that day. Finally Change shows the percentage change from the previous day's closing price.
 
@@ -46,6 +46,8 @@ if(!require(lubridate)) install.packages("lubridate")
 if(!require(ggplot2)) install.packages("ggplot2")
 if(!require(ggrepel)) install.packages("ggrepel")
 if(!require(gridExtra)) install.packages("gridExtra")
+if(!require(feasts)) install.packages("feasts")
+if(!require(forecast)) install.packages("forecast")
 
 #next load up these packages
 
@@ -59,6 +61,8 @@ library(lubridate) #for dealing with dates
 library(ggplot2) #for visualisation
 library(ggrepel) #for ensuring labels don't overlap in plots
 library(gridExtra) #for plotting graphs in a grid or next to each other
+library(feasts) #to be able to use autoplot function with tsibble objects
+library(forecast) #to be able to use autoplot function with ts objects
 
 ```
 
@@ -87,4 +91,74 @@ gold_df <- gold_df %>%
 head(gold_df)
 ```
 
-We see that we now have a tsibble object with 7 columns. The [1D] means the index is in 1-day intervals.
+We see that we now have a tsibble object with 7 columns. The [1D] means the index is in 1-day intervals. However, we can see that the 5th of January 2014 has not been included. We can check what gaps we have in the data:
+
+```{r}
+#use tsibble package's count_gaps function to see where the gaps are
+count_gaps(gold_df)
+```
+
+It is apparent that the data is missing the weekends. This would cause problems when we are working with tsibble object, especially when attempting to plot seasonalities or forecasting. So let's fill those missing weekends. For this, we can use the __complete()__ function from __tidyr__ package which is already included in the __tidyverse__ package.
+
+```{r}
+gold_df <- gold_df %>% 
+  complete(Date = seq.Date(min(Date), max(Date), by="day")) %>% #format is: seq.Date(start date, end date, by = unit of Date)
+  fill("Price", "Open", "High", "Low", "Volume", "Chg.") #without fill function, complete() above would only fill the dates but we would get NAs for the rest of the columns corresponding to those weekends. With fill() we copy the same values for each column by the immediately preceding value to the NA.
+
+head(gold_df)
+```
+
+Now we can see that those missing dates have been filled. However, top left corner of the output tells us that this is now a tibble object and not a tsibble object. So we need to convert it back to a tsibble object.
+
+```{r}
+as_tsibble(gold_df) %>% count_gaps()
+```
+
+
+
+
+
+
+
+
+
+
+## 2b. Exploration
+
+The first thing to do in any data analysis task is to plot the data and see if any patterns emerge. We can start by plotting the price behaviour against time to see if there is any seasonality, trend, or cyclic patterns. Seasonality is a pattern in time series that repeats regularly, in a fixed and known period. Trend refers to a pattern of a long-term increase or decrease in the data. Finally, cyclic pattern occurs when the data shows rises and falls, not dissimilar to seasonal in a way but not in a fixed frequency.
+
+```{r}
+gold_df %>% 
+  ggplot(aes(Date, Price)) +
+  geom_line() +
+  labs(title = "Gold Mini Futures Price (INR)")
+```
+
+
+```{r}
+#autoplot function produces an appropriate plot of whatever is passed in the first argument
+autoplot(gold_df, Price) + #autoplot recognises gold_df as a time series and produces a time plot
+  labs(title = "Gold Mini Futures Daily Closing Prices",
+       subtitle = "(INR) From 01.01.14 to 05.08.22")
+```
+
+From the price behaviour we can see some strong positive trend. We can also see if percentage change of closing prices from the previous day can yield further information that may not be immediately apparent from the prices plot.
+
+```{r}
+autoplot(gold_df, Chg.)
+```
+There seems to be no trend, seasonality, or cyclic behaviour, nor any strong patterns that can aid in developing a forecasting model.
+
+```{r}
+gold_df %>%
+  mutate(Date = ymd(as.character(Date))) %>%
+  as_tsibble(index = Date) %>%
+  gg_season(Price)
+```
+
+
+
+
+
+# References
+Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice, 3rd edition, OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on 13 Sep 2022
