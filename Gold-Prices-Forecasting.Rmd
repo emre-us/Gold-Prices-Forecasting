@@ -48,6 +48,7 @@ if(!require(ggrepel)) install.packages("ggrepel")
 if(!require(gridExtra)) install.packages("gridExtra")
 if(!require(feasts)) install.packages("feasts")
 if(!require(forecast)) install.packages("forecast")
+if(!require(reshape2)) install.packages("reshapre2")
 
 #next load up these packages
 
@@ -56,6 +57,7 @@ library(tibble) #to be able to convert data frames to tibble objects
 library(tsibble) #tibble objects for time series
 library(tidyverse) #for tidy data
 library(lubridate) #for dealing with dates
+library(reshape2) #for reshaping data to long format-useful in plotting multiple time series in same axis
 
 #packages for plots and graphics
 library(ggplot2) #for visualisation
@@ -108,10 +110,11 @@ gold_df <- gold_df %>%
 head(gold_df)
 ```
 
-Now we can see that those missing dates have been filled. However, top left corner of the output tells us that this is now a tibble object and not a tsibble object. So we need to convert it back to a tsibble object.
+Now we can see that those missing dates have been filled. However, top left corner of the output tells us that this is now a tibble object and not a tsibble object. So we need to convert it back to a tsibble object. We can then check if there are any gaps.
 
 ```{r}
-as_tsibble(gold_df) %>% count_gaps()
+gold_df <- as_tsibble(gold_df)
+count_gaps(gold_df)
 ```
 
 
@@ -127,16 +130,10 @@ as_tsibble(gold_df) %>% count_gaps()
 
 The first thing to do in any data analysis task is to plot the data and see if any patterns emerge. We can start by plotting the price behaviour against time to see if there is any seasonality, trend, or cyclic patterns. Seasonality is a pattern in time series that repeats regularly, in a fixed and known period. Trend refers to a pattern of a long-term increase or decrease in the data. Finally, cyclic pattern occurs when the data shows rises and falls, not dissimilar to seasonal in a way but not in a fixed frequency.
 
-```{r}
-gold_df %>% 
-  ggplot(aes(Date, Price)) +
-  geom_line() +
-  labs(title = "Gold Mini Futures Price (INR)")
-```
-
 
 ```{r}
-#autoplot function produces an appropriate plot of whatever is passed in the first argument
+#we can use autoplot() function which produces an appropriate plot of whatever is passed in the first argument
+
 autoplot(gold_df, Price) + #autoplot recognises gold_df as a time series and produces a time plot
   labs(title = "Gold Mini Futures Daily Closing Prices",
        subtitle = "(INR) From 01.01.14 to 05.08.22")
@@ -147,14 +144,34 @@ From the price behaviour we can see some strong positive trend. We can also see 
 ```{r}
 autoplot(gold_df, Chg.)
 ```
-There seems to be no trend, seasonality, or cyclic behaviour, nor any strong patterns that can aid in developing a forecasting model.
+There seems to be no trend, seasonality, or cyclic behaviour, nor any strong patterns that can aid in developing a forecasting model. So we will continue with closing prices. From the initial plot we can observe that there does not seem to be a strong seasonality despite having a strong trend. We can further plot the closing prices against "seasons".
+
+```{r}
+#gg_season() function from feasts package will help with plotting time series against each season.
+gg_season(gold_df, labels = "both") #seasonal periods can be changed by including period="month" command within gg_season function
+```
+
+We can see that up to second half of 2019 prices movements were largely flat. From the second half of 2019 we begin to see upward trend. There are strong volatilities in 2020 with a drop in March 2020 and a big jump in August 2020. These movements may have been exacarbated with the uncertainties around Covid policies during this period. We also see a drop until April 2021, though a more gradual than the one in March 2020, before resuming the upward trend. We can also see if there is a trend in volumes traded.
+
+```{r}
+gold_df %>% gg_season(Volume)
+```
+
+The volumes seem to show strong seasonality but this is likely due to having no trading activity over the weekends. We can see 2020 standing out with large volume movements which seem to coincide with large price movements we observe in the price movements for that year. Let's see if there is any relationship between the two by plotting them against each other for 2020.
 
 ```{r}
 gold_df %>%
-  mutate(Date = ymd(as.character(Date))) %>%
-  as_tsibble(index = Date) %>%
-  gg_season(Price)
+  filter(year(Date) == 2020) %>%
+  ggplot(aes(x = Volume, y = Price)) +
+  geom_point()
+
 ```
+
+There does not seem to be any strong relationship between the volume traded and price level.
+
+
+
+
 
 
 
