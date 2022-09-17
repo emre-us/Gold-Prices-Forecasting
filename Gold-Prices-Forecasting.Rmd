@@ -337,10 +337,9 @@ As can be seen, our forecast of average price is way off the actual values. We c
 ```{r}
 base_accuracy <- accuracy(avg_fc, gold_test)
 base_accuracy
-
 ```
 
-From the accuracy calculation we can see that we get some ridiculous RMSE and MAE results for our base model. As we go along RMSEs and MAEs of different methods will be compared, so we can create a table with this result:
+From the accuracy calculation we can see that we get some ridiculous RMSE and MAE results for our base model. This means our typical error, in RMSE terms, is more than 18,000 INR when predicting gold mini closing price. Note that, due to Jensen's inequality MAE will always be smaller than RMSE. As we go along RMSEs and MAEs of different methods will be compared, so we can create a table with this result:
 
 ```{r}
 #as before we can use tibble to create our results table:
@@ -358,6 +357,191 @@ fc_accuracy_results
 
 
 
+### 2e.ii. Second Model: Naive
+
+We can perhaps improve on the previous model if instead of setting our forecast as the average price, we set it as the value of last observation. This is also called naive method and can be expressed as:
+
+$$
+\hat{y}_{t+h|T} = y_T
+$$
+Because a naive forecast is optimal when data follow a random walk, these are also called random walk forecasts (Hyndman and Athanasopoulos, 2021).
+
+We can again fit our model to the smaller training set and forecast it. Then we can assess its accuracy by plotting it and calculating the forecasting errors. 
+
+```{r}
+#use model() function from fable package to fit the model to training data
+
+naive_fit <- gold_train2 %>%
+  model(Average = NAIVE(Price)) #we can either use NAIVE() function or RW() function for random walk
+
+#Generate forecasts for the next 565 days
+naive_fc <- naive_fit %>%
+  forecast(h = 565)
+
+#Plot forecasts against actual values
+naive_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "Forecast for Gold Mini Closing Price") #add title
+```
+
+As we see from the plot our forecast of last price is way off the actual values but much better than the forecast of average price. We can check how badly this model has done, or how much better it is compared to just the average:
+
+```{r}
+naive_accuracy <- accuracy(naive_fc, gold_test)
+naive_accuracy
+
+```
+
+We see that MAE and RMSE are still ridiculously high but considerably better than our base model. We managed to reduce our typical error to little less than 4,500 INR, in terms of RMSE, and just about 3,900 INR in terms of MAE. We can add this to our table:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "Naive",
+                                        naive_accuracy[,4:5]))
+fc_accuracy_results
+```
+
+
+
+
+
+### 2e.iii: Third Model: Random Walk with Drift
+
+This is a variation of the naive method whereby the forecasts are not stationary but change overtime, referred to as "drift". Drift is effectively the average of the historical data. This is expressed as:
+
+$$
+\hat{y}_{t+h|T} = y_T + \frac{h}{T-1}\sum_{t=2}^{T}{(y_t - y_{t-1})}
+$$
+This is effectively adding "drift" to the naive model which in a way draws a line between the first and last observations and extrapolating into the future. The expression can be rewritten as:
+
+$$
+\hat{y}_{t+h|T} = y_T + h\left(\frac{y_t - y_{t-1}}{T-1}\right)
+$$
+
+We can model this just like the previous two, this time we run the command RW() for random walk or NAIVE() as before, and add drift as follows:
+
+```{r}
+#use model() function from fable package to fit the model to training data
+drift_fit <- gold_train2 %>%
+  model(Average = NAIVE(Price ~ drift())) #we can either use NAIVE() function or RW() function for random walk. We then drift the closing price while running random walk
+
+#Generate forecasts for the next 565 days
+drift_fc <- drift_fit %>%
+  forecast(h = 565)
+
+#Plot forecasts against actual values
+drift_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "Forecast for Gold Mini Closing Price") #add title
+```
+
+We can see on the plot a better performance. Let's calculate our forecasting error:
+
+```{r}
+drift_accuracy <- accuracy(drift_fc, gold_test)
+drift_accuracy
+```
+We see that RMSE is now showing that our typical error is just over 3350 INR, and MAE just over 2580 INR. This is a considerable improvement, though we may still do better. Lets add this result to our table:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "Naive with Drift",
+                                        drift_accuracy[,4:5]))
+fc_accuracy_results
+```
+
+
+
+
+
+### 2e.iv. Fourth Model: Naive with Drift and with Cross-Validation
+
+So far we used a smaller training set in order to be able to test each training model on the test set. However, instead of dividing the larger training set we created by separating the validation set, we could use cross-validation whereby we use a series of test sets, each consisting of a single observation. The training set that corresponds to that test set includes only the observations before the observation in the test set. This means, no future observations can be used in constructing the forecast. Since small training sets do not yield any reliable training set, the earliest observations are not treated as test sets. This is sometimes called "evaluation on a rolling forecasting origin".
+
+The average over the test sets then yields the forecasting accuracy. To obtain this, we will first create lots of training set with __stretch_tsibble()__ function.
+
+
+```{r}
+#create many training sets for cross-validation:
+
+drift_cv <- gold_train_df %>% #we begin with the larger training set
+  stretch_tsibble(.init = 100, .step = 1) %>%  #we use stretch_tsibble() with an initial training set of 100, increasing the size of successive training sets by 1.
+  relocate(Date, Price, .id) #stretching introduces a new column ".id" and mutates it as a last column. We reorder it so it becomes the 3rd column after Date and Price
+
+#check the tail of the new tsibble object we created
+tail(drift_cv)
+```
+The new tsibble object we created has an additional third column called ".id" as we intended. This column provides new key that shows us the various training sets. Accordingly, we created 2726 training sets. We can now model our so far most successful model with cross validation and check the accuracy of this model using the __accuracy()__ function as before:
+
+```{r}
+#running the following code will take a few minutes. It may be advisable to get some tea during this time
+drift_cv_fc_accuracy <- drift_cv %>%
+  model(NAIVE(Price ~ drift())) %>%
+  forecast(h = 565) %>%
+  accuracy(gold_train_df)
+
+drift_cv_fc_accuracy
+```
+
+We actually see that our typical error gets worse with the cross validation approach with RMSE increasing to 5169 and MAE to 3614 INR. We will add this to our table as well:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "Cross_Validated Naive with Drift",
+                                        drift_cv_fc_accuracy[,4:5]))
+fc_accuracy_results
+```
+
+
+
+
+
+# 2e.v. Fifth Model: ARIMA
+
+Up to now we used simple forecasting tools ranging from average to naive to naive with a drift. In this next model we will try a model that aims to describe autocorrelations in the data. Autocorrelation measures linear relationship between lagged values of a time series. If we denote $l$ number of lags and then autocorrelation coefficient can be expressed as:
+
+$$
+autocorrelation.coefficient= r_l = \frac{\sum_{t=l+1}^{T}(y_t - \bar{y}) (y_{t-l} - \bar{y})}{\sum_{t=1}^{T}(y_t - \bar{y})^2}
+$$
+
+We can calculate the autocorrelation coefficient for the gold mini futures closing prices with various lags with the __ACF()__ function from the __feasts__ package:
+
+```{r}
+#We will limit the lags to a maximum of 7 days for illustrative purposes
+gold_train_df %>% ACF(Price, lag_max = 7)
+
+```
+
+The values observed in the "acf" column of this tsibble output corresponds to $r_1, ..., r_7$.
+
+In addition to autocorrelation, we also need to understand the concept of stationarity in order for us to be able to run ARIMA model.
+
+
+
+
+#### 2e.v.I. Stationarity
+
+Stationarity refers to those time series whose statistical properties do not depend on the time at which the series is observed. That is, if ${y_t}$ is a stationary time series, then for all s, the distribution of $(y_t, ..., y_{t+s}$ does not depend on t (Hyndman and Athanasopoulos, 2021). This means, those time series that show trends or seasonality are not stationary, though if they are only showing cyclical behaviour they are likely to be stationary since cycles are not of a fixed length so there are no certainties around when peaks and troughs of cycles will be.
+
+For stationary time series, we would expect the acf values to decline to zero quickly, while non-stationary data decreases slowly. We can see from our acf column above that the gold mini futures price is non-stationary since the drop in autocorrelation values are very slow. They are also very large - almost 1 - and positive which is another confirmation for non-stationarity.
+
+This means we would need transformations to turn the price data to stationary. Logarithms, for example, can help stabilise the variance of the time series. Differencing, on the other hand, can help stabilising the mean of a time series. We can compare the behaviour of autocorrelation coefficients between the price pattern itself, and the differences between the closing price of a given day and the day it immediately precedes:
+
+```{r}
+gold_train_df %>%
+  ACF(Price) %>%
+  autoplot() +
+  labs(subtitle = "Closing Price Autocorrelation Coefficients")
+
+gold_train_df %>%
+  ACF(difference(Price)) %>%
+  autoplot() +
+  labs(subtitle = "Changes in Closing Price Autocorrelation Coefficients")
+```
+
+We can see that the autocorrelation coefficients decline extremely slowly, while these coefficients are close to zero for 1-day differences, with some random variation. This is called white noise, and there are no apparent autocorrelation behaviour. The blue dashed lines in both graphs show the 95% boundary around 0 within which we would expect 95% of the acf to reside. The 95% boundary is calculated as $±\frac{2}{\sqrt{T}}$  where T is the length of time series. 
 
 
 # References
