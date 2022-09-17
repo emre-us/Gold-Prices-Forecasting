@@ -498,7 +498,7 @@ fc_accuracy_results
 
 
 
-# 2e.v. Fifth Model: ARIMA
+# 2e.v. Fifth Model: Autoregressive Integrated Moving Average (ARIMA)
 
 Up to now we used simple forecasting tools ranging from average to naive to naive with a drift. In this next model we will try a model that aims to describe autocorrelations in the data. Autocorrelation measures linear relationship between lagged values of a time series. If we denote $l$ number of lags and then autocorrelation coefficient can be expressed as:
 
@@ -536,14 +536,73 @@ gold_train_df %>%
   labs(subtitle = "Closing Price Autocorrelation Coefficients")
 
 gold_train_df %>%
-  ACF(difference(Price)) %>%
+  ACF(difference(Price)) %>% #transform time series by differencing
   autoplot() +
   labs(subtitle = "Changes in Closing Price Autocorrelation Coefficients")
 ```
 
 We can see that the autocorrelation coefficients decline extremely slowly, while these coefficients are close to zero for 1-day differences, with some random variation. This is called white noise, and there are no apparent autocorrelation behaviour. The blue dashed lines in both graphs show the 95% boundary around 0 within which we would expect 95% of the acf to reside. The 95% boundary is calculated as $±\frac{2}{\sqrt{T}}$  where T is the length of time series. 
 
+We can test whether the differenced time series is stationary by using Ljung-Box test. We could also use Box-Pierce but Ljung-Box test tends to be more accurate (Hyndman and Athanasopoulos, 2021). The Ljung-Box argues that a value $Q^*$ has $\chi^2$ distribution with (L-K) degrees of freedom, where L is the maximum lag being considered, and K is the number of parameters in the model. In our methods we considered so far there are no parameters to K = 0. The value $Q^*$ is calculated as:
+
+$$
+Q^* = T(T+2) \sum_{l=1}^{L} (T-l)^{-1} r_l^2
+$$
+
+Large values of $Q^*$ and low p-value for not-significance indicate white noise. We can therefore check whether the differencing of gold mini futures prices transform the time series to stationary with the Ljung-Box test:
+
+```{r}
+gold_train_df %>%
+  mutate(diff_price = difference(Price)) %>% #add a new column with the differences to the tsibble object
+  features(diff_price, ljung_box, lag = 7) #use features() function from the feast package to apply the ljung-box test to the new column we created with h=7 
+```
+
+Ljung-Box $Q^* statistic is 21.6 for h=7 and has a p-value of 0.003. This suggest that the daily change in the closing price is essentially a random amount which is uncorrelated with that of previous days.
+
+We can also carry out unit root test to see if differencing is necessary for establishing stationarity. We will use Kwiatkowski-Phillips-Schmidt-Shin (KPSS) test (Kwiatkowski et al., 1992), whereby the null hypothesis is that the data are stationary. The test can be conducted using __unitroot_kpss()__ function.
+
+```{r}
+#check if differencing is necessary for stationarity
+gold_train_df %>%
+  features(Price, unitroot_kpss) #features and unitroot_kpss functions from feasts package are applied to the Price column of the training set
+```
+The output does not give the exact p-value but reports it as 0.01 if it is less than 0.01, and as 0.1 if it is greater than 0.1. In this case, the test statistic of 21.73 is bigger than 1% critical value, so the p-value is less than 0.01, and thus we reject the null hypothesis that data is stationary.
+
+Let's do the same for the differenced data:
+
+```{r}
+gold_train_df %>%
+  mutate(diff_price = difference(Price)) %>% #add a new column with the differences to the tsibble object
+  features(diff_price, unitroot_kpss) #features and unitroot_kpss functions from feasts package are applied to the differenced price column we created
+```
+
+This time we get a very small test statistic of 0.21 and the p-value is larger than 0.1. We can conclude that we cannot reject the null hypothesis that the data is stationary.
+
+Next we can determine how many first differences are required as in, is it better in terms of stationarity to difference immediately preceding day, or two days prior etc. The fastest way to do this is to use the unitroot_ndiffs() function from the fable package:
+
+```{r}
+gold_train_df %>%
+  features(Price, unitroot_ndiffs)
+```
+We see that 1 difference is sufficient to make data stationary.
+
+In order to build our ARIMA model we need to understand next Autoregressive models and Moving Average models, since ARIMA is the integration of these two.
+
+
+
+
+#### 2e.v.II Autoregressive Models
+
+
+
+
+
+
+
+
+
 
 # References
 Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. International Journal of Forecasting, 22(4), 679–688
 Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice, 3rd edition, OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on 13 Sep 2022
+Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root: How sure are we that economic time series have a unit root? Journal of Econometrics, 54(1-3), 159–178. 
