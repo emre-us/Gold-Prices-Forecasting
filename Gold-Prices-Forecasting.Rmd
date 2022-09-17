@@ -193,17 +193,17 @@ Overall, there does not seem to be any clear seasonality trends. Given the data 
 
 ##2c. Data Preperation
 
-We will begin by splitting our data to training and test, or holdout, sets. The latter will be held out to test the most successful model. The most successful model will be determined by cross-validating the training data whereby a series of test sets are generated and tested on. The corresponding training sets for each test set consists of gold mini futures closing price observations that occurred prior to those observation(s) in the test set.
+We will begin by splitting our data to training and validation, or holdout, sets. The latter will be held out to test the most successful model. The corresponding training sets consists of gold mini futures closing price observations that occurred prior to those observation(s) in the validation set. We will keep 10% of the most recent data in the validation set.
 
 ```{r}
 #Split data to training and test sets. We can use filter() or slice() functions for this and I will use both here as a way of illustrating how each can be used. There is also ts_split() function from TSStudio package but I did not see the need of installing that package just for splitting this data. tsibble and fable packages provide all the things we need for this work.
 
 #Test set with slice()
-gold_test_df <- gold_df %>% 
+gold_validation_df <- gold_df %>% 
   slice(n() -313:0) #since we have 3139 rows, 10% of data is roughly equivalent to the last 314 rows
 
 #We can see the head of test set
-head(gold_test_df)
+head(gold_validation_df)
 
 #which shows that the test set begins with 26 September 2021
 
@@ -215,14 +215,26 @@ gold_train_df <- gold_df %>%
 tail(gold_train_df)
 ```
 
-We can also check the dimensions of the training and test sets:
+We can also check the dimensions of the training and validation sets:
 
 ```{r}
 tibble(training_set = dim(gold_train_df),
-      test_set = dim(gold_test_df))
+      test_set = dim(gold_validation_df))
 ```
-and we see that training set has 2825 rows and test set 314 rows. Both has 7 columns as before.
+and we see that training set has 2825 rows and validation set 314 rows. Both has 7 columns as before.
 
+We will next split the training set further to keep 20% of it as a set we will test the models we train on the remaining 80%. We expect the training data set to have 2260 rows and the test set to have 565 rows.
+
+```{r}
+#a simpler approach than using slice() or filter() functions is as follows:
+gold_train2 <- gold_train_df[1:2260,]
+gold_test <- gold_train_df[-(1:2260),]
+
+#we can check the dimensions of our smaller training set and the test set:
+tibble(dim(gold_train2),
+       dim(gold_test))
+```
+We see that we have split the data as we intended to.
 
 
 
@@ -246,8 +258,108 @@ $\hat{y}_{t+h|T}$ is forecast of $y_{t+h}$ taking account of training data - ie.
 training data = ${y_1, ..., y_t}$; and
 test data = ${y_{t+1}, y_{t+2},...}$
 
+We can then measure the forecast accuracy by summarising forecast errors. There are, however, different ways of doing this. Broadly, speaking, for point forecasts, the forecast accuracy can be divided into two broad categories - scale-dependent errors whereby the forecast errors are on the same scale as the data, and unit-free non-scale dependent errors.
+
+
+
+### 2d.i. Scale-dependent errors
+These measurements are useful only if we are not looking to compare between series that involve different units. The two most common ones are mean absolute error (MAE) and root mean squared error (RMSE):
+
+$$
+MAE = \sqrt{\frac{1}{N} \sum \left| \hat{y}_{t} - y_{t} \right|^2 }
+$$
+and
+
+$$
+RMSE = \sqrt{\frac{1}{N} \sum \left( \hat{y}_{t} - y_{t} \right)^2 }
+$$
+where $N$ is the total number of observations.
+
+MAE is particularly popular measurement as it is easier to interpret than RMSE. It also does not emphasise the larger errors as RMSE. Another key difference between the two is that a method that minimises the MAE will lead to forecasts of the __median__, and that minimises RMSE will lead to forecasts of the __mean__. Due to this difference, RMSE is also very commonly adopted.
+
+For non-scale-dependent measures that are a number of approaches including mean absolute percentage error (MAPE), symmetric MAPE (sMAPE), mean absolute scaled error (MASE), and root mean squared scaled error (RMSSE). Since we are not going to use datasets with different units, non-scale-dependent measurments are not needed for this project. For detailed discussions of these see Hyndman and Koehler (2006).
+
+
+
+
+
+
+
+
+
+
+## 2e. Models
+
+We can now begin to build our models using the smaller training set and test their forecasting accuracy against the test set.
+
+
+
+
+
+### 2e.i. First Model: Establishing the base to compare all models against
+
+Without any prior knowledge, the most basic and simple forecast would to be to predict that all future prices are equal to the average price of the historical data, which is our training data. That is:
+
+$$
+\hat{y}_{t+h|T} = \frac{(y_1 +...+ y_t)}{N}
+$$
+
+We will use __fable__ package's __model__ function to fit our model to the smaller training data and then forecast it.
+
+```{r}
+#use model() function from fable package to fit the model to training data
+
+avg_price_fit <- gold_train2 %>%
+  model(Average = MEAN(Price))
+
+```
+
+We will then generate a forecast for the next 565 days that are held out as a test set
+```{r}
+#Generate forecasts for the next 565 days
+avg_fc <- avg_price_fit %>%
+  forecast(h = 565)
+
+```
+
+We can then plot our forecast against the actual values:
+
+```{r}
+#Plot forecasts against actual values
+avg_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "Forecast for Gold Mini Closing Price") #add title
+```
+
+As can be seen, our forecast of average price is way off the actual values. We can check how badly this model has done in its forecasting accuracy by using the __accuracy()__ function:
+
+```{r}
+base_accuracy <- accuracy(avg_fc, gold_test)
+base_accuracy
+
+```
+
+From the accuracy calculation we can see that we get some ridiculous RMSE and MAE results for our base model. As we go along RMSEs and MAEs of different methods will be compared, so we can create a table with this result:
+
+```{r}
+#as before we can use tibble to create our results table:
+fc_accuracy_results <- tibble("Base: Just the Average", base_accuracy[,4:5]) %>%
+  set_names(c("Method", "RMSE", "MAE"))
+fc_accuracy_results
+```
+
+
+
+
+
+
+
+
+
 
 
 
 # References
+Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. International Journal of Forecasting, 22(4), 679–688
 Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice, 3rd edition, OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on 13 Sep 2022
