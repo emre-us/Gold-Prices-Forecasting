@@ -49,6 +49,7 @@ if(!require(gridExtra)) install.packages("gridExtra")
 if(!require(feasts)) install.packages("feasts")
 if(!require(forecast)) install.packages("forecast")
 if(!require(reshape2)) install.packages("reshapre2")
+if(!require(fable)) install.packages("fable")
 
 #next load up these packages
 
@@ -65,6 +66,9 @@ library(ggrepel) #for ensuring labels don't overlap in plots
 library(gridExtra) #for plotting graphs in a grid or next to each other
 library(feasts) #to be able to use autoplot function with tsibble objects
 library(forecast) #to be able to use autoplot function with ts objects
+
+#packages for modelling
+library(fable)
 
 ```
 
@@ -117,6 +121,13 @@ gold_df <- as_tsibble(gold_df)
 count_gaps(gold_df)
 ```
 
+Finally, lets check the dimensions of the data set that now includes the weekends:
+
+```{r}
+dim(gold_df)
+```
+
+We can see that now the rows have increased from 2227 to 3139. Naturally, there are still 7 columns.
 
 
 
@@ -169,10 +180,71 @@ gold_df %>%
 
 There does not seem to be any strong relationship between the volume traded and price level.
 
+Overall, there does not seem to be any clear seasonality trends. Given the data is only from 2014, there may be cyclicality that is stretching further in time that we are not observing.
 
 
 
 
+
+
+
+
+
+
+##2c. Data Preperation
+
+We will begin by splitting our data to training and test, or holdout, sets. The latter will be held out to test the most successful model. The most successful model will be determined by cross-validating the training data whereby a series of test sets are generated and tested on. The corresponding training sets for each test set consists of gold mini futures closing price observations that occurred prior to those observation(s) in the test set.
+
+```{r}
+#Split data to training and test sets. We can use filter() or slice() functions for this and I will use both here as a way of illustrating how each can be used. There is also ts_split() function from TSStudio package but I did not see the need of installing that package just for splitting this data. tsibble and fable packages provide all the things we need for this work.
+
+#Test set with slice()
+gold_test_df <- gold_df %>% 
+  slice(n() -313:0) #since we have 3139 rows, 10% of data is roughly equivalent to the last 314 rows
+
+#We can see the head of test set
+head(gold_test_df)
+
+#which shows that the test set begins with 26 September 2021
+
+#For training set we can use filter() function to see different syntax
+gold_train_df <- gold_df %>%
+  filter(Date < "2021-09-26")
+
+#We can check that training set ends on 25th of Sep 2021
+tail(gold_train_df)
+```
+
+We can also check the dimensions of the training and test sets:
+
+```{r}
+tibble(training_set = dim(gold_train_df),
+      test_set = dim(gold_test_df))
+```
+and we see that training set has 2825 rows and test set 314 rows. Both has 7 columns as before.
+
+
+
+
+
+
+
+
+
+
+## 2d. Definition of Success
+
+In order for us to determine the most successful model, we first need to define what is meant by success. In its simplest form, success for our current purposes mean the smallest forecast error, ie the difference between the forecasted value and the corresponding actual value observed. This can be expressed as:
+
+$$
+e_{t+h} = y_{t+h} - \hat{y}_{t+h|T}
+$$
+where,
+$y_t$ is observation in time $t$;
+$\hat{y}_t$ is forecast of $y_t$;
+$\hat{y}_{t+h|T}$ is forecast of $y_{t+h}$ taking account of training data - ie. an h-step forecast taking into account of all observations up to time T 
+training data = ${y_1, ..., y_t}$; and
+test data = ${y_{t+1}, y_{t+2},...}$
 
 
 
