@@ -2,7 +2,9 @@
 title: "Gold Price Forecasting"
 author: "Emre Usenmez - github.com/emre-us"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -84,12 +86,14 @@ gold_df <- read.csv("~/R Projects/Gold-Prices-Forecasting/Gold Price.csv")
 Let's understand the data:
 
 ```{r}
+#Check structure of data:
 str(gold_df)
 ```
 
 We can see that it is a 2227 by 7 data frame. It provides the measurements for closing, opening, and highest and lowest prices reached for each day, as well as the volume of trading for that day. Finally it provides the % change from the previous day's closing price. These are set against the daily index starting from 1st of January 2014. We can store this information as a __tsibble__ object for easier analysis.
 
 ```{r}
+#convert data frame to a tsibble object
 gold_df <- gold_df %>%
   mutate(Date = ymd(Date)) %>% #convert Date column from text to daily object with ymd() or with as_date().
   as_tsibble(index = Date) #convert to tsibble by identifying the index
@@ -108,6 +112,7 @@ count_gaps(gold_df)
 It is apparent that the data is missing the weekends. This would cause problems when we are working with tsibble object, especially when attempting to plot seasonalities or forecasting. So let's fill those missing weekends. For this, we can use the __complete()__ function from __tidyr__ package which is already included in the __tidyverse__ package.
 
 ```{r}
+#add weekends to the time series
 gold_df <- gold_df %>% 
   complete(Date = seq.Date(min(Date), max(Date), by="day")) %>% #format is: seq.Date(start date, end date, by = unit of Date)
   fill("Price", "Open", "High", "Low", "Volume", "Chg.") #without fill function, complete() above would only fill the dates but we would get NAs for the rest of the columns corresponding to those weekends. With fill() we copy the same values for each column by the immediately preceding value to the NA.
@@ -118,13 +123,16 @@ head(gold_df)
 Now we can see that those missing dates have been filled. However, top left corner of the output tells us that this is now a tibble object and not a tsibble object. So we need to convert it back to a tsibble object. We can then check if there are any gaps.
 
 ```{r}
+#convert data frame to a tsibble object
 gold_df <- as_tsibble(gold_df)
+#check if there are gaps in the time series
 count_gaps(gold_df)
 ```
 
 Finally, lets check the dimensions of the data set that now includes the weekends:
 
 ```{r}
+#check dimensions of the larger data frame
 dim(gold_df)
 ```
 
@@ -154,6 +162,7 @@ autoplot(gold_df, Price) + #autoplot recognises gold_df as a time series and pro
 From the price behaviour we can see some strong positive trend. We can also see if percentage change of closing prices from the previous day can yield further information that may not be immediately apparent from the prices plot.
 
 ```{r}
+#Plot the % change column
 autoplot(gold_df, Chg.)
 ```
 There seems to be no trend, seasonality, or cyclic behaviour, nor any strong patterns that can aid in developing a forecasting model. So we will continue with closing prices. From the initial plot we can observe that there does not seem to be a strong seasonality despite having a strong trend. We can further plot the closing prices against "seasons".
@@ -166,12 +175,14 @@ gg_season(gold_df, labels = "both") #seasonal periods can be changed by includin
 We can see that up to second half of 2019 prices movements were largely flat. From the second half of 2019 we begin to see upward trend. There are strong volatilities in 2020 with a drop in March 2020 and a big jump in August 2020. These movements may have been exacarbated with the uncertainties around Covid policies during this period. We also see a drop until April 2021, though a more gradual than the one in March 2020, before resuming the upward trend. We can also see if there is a trend in volumes traded.
 
 ```{r}
+#check seasonality of daily trading volume
 gold_df %>% gg_season(Volume)
 ```
 
 The volumes seem to show strong seasonality but this is likely due to having no trading activity over the weekends. We can see 2020 standing out with large volume movements which seem to coincide with large price movements we observe in the price movements for that year. Let's see if there is any relationship between the two by plotting them against each other for 2020.
 
 ```{r}
+#check relationship between Volume and Price
 gold_df %>%
   filter(year(Date) == 2020) %>%
   ggplot(aes(x = Volume, y = Price)) +
@@ -219,6 +230,7 @@ tail(gold_train_df)
 We can also check the dimensions of the training and validation sets:
 
 ```{r}
+#check dimensions of training and validation sets:
 tibble(training_set = dim(gold_train_df),
       validation_set = dim(gold_validation_df))
 ```
@@ -341,6 +353,7 @@ avg_fc %>%
 As can be seen, our forecast of average price is way off the actual values. We can check how badly this model has done in its forecasting accuracy by using the __accuracy()__ function:
 
 ```{r}
+#get RMSE and MAE accuracy of forecast
 base_accuracy <- accuracy(avg_fc, gold_test)
 base_accuracy
 ```
@@ -394,6 +407,7 @@ naive_fc %>%
 As we see from the plot our forecast of last price is way off the actual values but much better than the forecast of average price. We can check how badly this model has done, or how much better it is compared to just the average:
 
 ```{r}
+
 naive_accuracy <- accuracy(naive_fc, gold_test)
 naive_accuracy
 
@@ -451,12 +465,14 @@ drift_fc %>%
 We can see on the plot a better performance. Let's calculate our forecasting error:
 
 ```{r}
+#get RMSE and MAE accuracy of forecast
 drift_accuracy <- accuracy(drift_fc, gold_test)
 drift_accuracy
 ```
 We see that RMSE is now showing that our typical error is just over 3350 INR, and MAE just over 2580 INR. This is a considerable improvement, though we may still do better. Lets add this result to our table:
 
 ```{r}
+#add accuracy to the results table
 fc_accuracy_results <- bind_rows(fc_accuracy_results,
                                  tibble(Method = "Naive with Drift",
                                         drift_accuracy[,4:5]))
@@ -553,6 +569,7 @@ For stationary time series, we would expect the acf values to decline to zero qu
 This means we would need transformations to turn the price data to stationary. Logarithms, for example, can help stabilise the variance of the time series. Differencing, on the other hand, can help stabilising the mean of a time series. We can compare the behaviour of autocorrelation coefficients between the price pattern itself, and the differences between the closing price of a given day and the day it immediately precedes:
 
 ```{r}
+#compare ACF Plot of Price and differenced prices
 gold_train_df %>%
   ACF(Price) %>%
   autoplot() +
@@ -575,6 +592,7 @@ $$
 Large values of $Q^*$ and low p-value for not-significance indicate white noise. We can therefore check whether the differencing of gold mini futures prices transform the time series to stationary with the Ljung-Box test:
 
 ```{r}
+#apply Ljung-Box test
 gold_train_df %>%
   mutate(diff_price = difference(Price)) %>% #add a new column with the differences to the tsibble object
   features(diff_price, ljung_box, lag = 7) #use features() function from the feast package to apply the ljung-box test to the new column we created with h=7 
@@ -594,6 +612,7 @@ The output does not give the exact p-value but reports it as 0.01 if it is less 
 Let's do the same for the differenced data:
 
 ```{r}
+#do the same for the differenced data:
 gold_train_df %>%
   mutate(diff_price = difference(Price)) %>% #add a new column with the differences to the tsibble object
   features(diff_price, unitroot_kpss) #features and unitroot_kpss functions from feasts package are applied to the differenced price column we created
@@ -604,6 +623,7 @@ This time we get a very small test statistic of 0.21 and the p-value is larger t
 Next we can determine how many first differences are required as in, is it better in terms of stationarity to difference immediately preceding day, or two days prior etc. The fastest way to do this is to use the unitroot_ndiffs() function from the fable package:
 
 ```{r}
+#check how many differences are needed
 gold_train_df %>%
   features(Price, unitroot_ndiffs)
 ```
@@ -655,6 +675,7 @@ In order to be able to determine the better of the two models, we will choose th
 Based on this assessment AR(2) seems to give a better model though the values are very close for either of them. We can fit this model:
 
 ```{r}
+#fit AR(2) model
 AR2_fit <- gold_train2 %>%
   model(ARIMA(Price ~ pdq(p = 2, d=1, q=0)))
 
@@ -699,6 +720,7 @@ AR_fc_accuracy
 We see that our typical error is now about 3362 INR in terms of RMSE, and about 2590 INR in terms of MAE which are almost as good as our naive with drift model. We can add this to our results table:
 
 ```{r}
+#add the accuracy to our results table:
 fc_accuracy_results <- bind_rows(fc_accuracy_results,
                                  tibble(Method = "AR(2)",
                                         AR_fc_accuracy[,4:5]))
@@ -743,6 +765,7 @@ report(MA_fit)
 The AIC, AICc, and BIC values are almost the same but AICc values are lower for MA(2) model despite BIC being higher. Hyndman and Athanasopoulos (2021) argue that AICc is a better metric to use in determining which model is better, so we will adopt MA(2) in our approach here. We can fit this model as follows:
 
 ```{r}
+#model MA(2)
 MA2_fit <- gold_train2 %>%
   model(ARIMA(Price ~ pdq(p=0, d=1, q=2)))
 
@@ -817,6 +840,7 @@ This is called ARIMA (p,d,q) model where, as before, p refers to the order of th
 In order to apply the ARIMA model, as before we will use __fable__ package and we will look at different combinations of p being either 1 or 2, and q being either 1 or 2, while d always being 1.
 
 ```{r}
+#fit ARIMA(p,d,q) models for p=1,2 q=1,2 d=1
 ARIMA_fit <- gold_train2 %>%
   model(arima111 = ARIMA(Price ~ pdq(1,1,1)), #ARIMA(1,1,1) model
         arima211 = ARIMA(Price ~ pdq(2,1,1)), #ARIMA(2,1,1) model
