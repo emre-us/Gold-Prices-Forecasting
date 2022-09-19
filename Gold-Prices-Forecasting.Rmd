@@ -49,6 +49,7 @@ if(!require(feasts)) install.packages("feasts")
 if(!require(forecast)) install.packages("forecast")
 if(!require(reshape2)) install.packages("reshapre2")
 if(!require(fable)) install.packages("fable")
+if(!require(tinytex)) install.packages("tinytex")
 
 #next load up these packages
 
@@ -58,6 +59,7 @@ library(tsibble) #tibble objects for time series
 library(tidyverse) #for tidy data
 library(lubridate) #for dealing with dates
 library(reshape2) #for reshaping data to long format-useful in plotting multiple time series in same axis
+library(tinytex) #for knitting to pdf
 
 #packages for plots and graphics
 library(ggplot2) #for visualisation
@@ -929,10 +931,13 @@ ma2_extended_fc %>%
 If we check the accuracy:
 
 ```{r}
-accuracy(ma2_extended_fc, gold_validation_df)
+#create a larger validation set of last 879 days:
+larger_validation_df <- gold_df %>% 
+  slice(n() -878:0)
+accuracy(ma2_extended_fc, larger_validation_df)
 ```
 
-We see that RMSE is now as low as 1558 and MAE is as low as 1292. The predictive accuracy of the most successful data is due to two lines of thinking. First, differencing closing day prices from the immediately preceding day's closing price ensured we have stationarity. Stationarity, in turn, allowed us to examine how using past forecast errors in linear-regression fashion, which gave us our best model. When trained on the bigger training set, however, the forecasting accuracy of the model dropped. Interestingly, we could see that if we attempt to predict from the smaller training set, our accuracy improved considerably.
+We see that RMSE is now as low as 2829 and MAE is as low as 2112. The predictive accuracy of the most successful data is due to two lines of thinking. First, differencing closing day prices from the immediately preceding day's closing price ensured we have stationarity. Stationarity, in turn, allowed us to examine how using past forecast errors in linear-regression fashion, which gave us our best model. When trained on the bigger training set, however, the forecasting accuracy of the model dropped. Interestingly, we could see that if we attempt to predict from the smaller training set, our accuracy improved considerably.
 
 
 
@@ -963,3 +968,6 @@ Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice,
 Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root: How sure are we that economic time series have a unit root? Journal of Econometrics, 54(1-3), 159–178. 
 
 Dataset: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv
+
+
+
