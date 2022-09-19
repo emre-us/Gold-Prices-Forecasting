@@ -737,7 +737,7 @@ MA2_fit %>%
 
 We see that all except 2 residual are within the 95% interval around 0. And both count distribution and the residual plot shows that the residuals are likely to be white noise.
 
-Lets check the forecasting accuracy next. we will first forecast to the next 565 days of our AR(2) fitted model and then plot it against our test set to see how well we did:
+Lets check the forecasting accuracy next. we will first forecast to the next 565 days of our MA(2) fitted model and then plot it against our test set to see how well we did:
 
 ```{r}
 #forecast using the AR(4) fitted model:
@@ -764,6 +764,97 @@ fc_accuracy_results <- bind_rows(fc_accuracy_results,
                                         MA_fc_accuracy[,4:5]))
 fc_accuracy_results
 ```
+
+We can next try combining AR and MA methods to see if we have an improvement.
+
+
+
+
+
+
+
+
+
+### 2e.vii. Seventh Model: Autoregressive Integrated Moving Average (ARIMA) Model
+
+If we represent the differenced series as $y'_t$ then the combination of AR and MA models can be expressed as:
+
+$$
+y'_t = c + \phi_1 y'_{t-1} + ... + \phi_p y'_{t-p} + \varepsilon_t + \theta_1 \varepsilon_{t-1} + \theta_2 \varepsilon_{t-2} +...+ \theta_q \varepsilon_{t-q}
+$$
+This is called ARIMA (p,d,q) model where, as before, p refers to the order of the autoregressive part, d refers to the degree of first differencing involved, and q is the order of the moving average part.
+
+In order to apply the ARIMA model, as before we will use __fable__ package and we will look at different combinations of p being either 1 or 2, and q being either 1 or 2, while d always being 1.
+
+```{r}
+ARIMA_fit <- gold_train2 %>%
+  model(arima111 = ARIMA(Price ~ pdq(1,1,1)), #ARIMA(1,1,1) model
+        arima211 = ARIMA(Price ~ pdq(2,1,1)), #ARIMA(2,1,1) model
+        arima112 = ARIMA(Price ~ pdq(1,1,2)), #ARIMA(1,1,2) model
+        arima212 = ARIMA(Price ~ pdq(2,1,2))) #ARIMA(2,1,2) model
+
+report(ARIMA_fit)
+```
+
+From the fitting of these 4 models, the AICc is lowest for ARIMA(2,1,2) model whereby we combine AR(2) and MA(2) for 1 differenced gold mini futures closing price data. We can fit this model as follows:
+
+```{r}
+ARIMA212_fit <- gold_train2 %>%
+  model(ARIMA(Price ~ pdq(p=2, d=1, q=2)))
+
+report(ARIMA212_fit)
+```
+
+The fitted model is therefore:
+
+$$
+y'_t = 0 - 1.4058 y'_{t-1} - 0.7773 y'_{t-2} + 1.3432 \varepsilon_{t-1} + 0.7515 \varepsilon_{t-2}
+$$
+
+We can plot the residuals to see if they are white noise:
+
+```{r}
+#gg_residuals() function will give us the residual plots and ACF plot
+
+ARIMA212_fit %>%
+  gg_tsresiduals()
+```
+
+We see that all except 1 residual are within the 95% interval around 0. And both count distribution and the residual plot shows that the residuals are likely to be white noise.
+
+Lets check the forecasting accuracy next. we will first forecast to the next 565 days of our ARIMA(2, 1, 2) fitted model and then plot it against our test set to see how well we did:
+
+```{r}
+ARIMA_fc <- ARIMA212_fit %>%
+  forecast(h=565) 
+
+ARIMA_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "ARIMA(2,1,2) Forecast for Gold Mini Closing Price") #add title
+
+```
+
+The forecast seems to be much worse than either of AR(2) or MA(2) models.  Let's see how we did in terms of RMSE and MAE:
+
+```{r}
+ARIMA_fc_accuracy <- accuracy(ARIMA_fc, gold_test)
+ARIMA_fc_accuracy
+```
+
+We see that our typical error has increased to 4,481 INR for RMSE, and 3883 INR for MAE which is almost as poor as the accuracy we got with the Naive approach. Let's add this to our results table:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "ARIMA(2,1,2)",
+                                        ARIMA_fc_accuracy[,4:5]))
+fc_accuracy_results
+```
+
+
+
+
+
 
 
 
