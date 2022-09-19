@@ -329,7 +329,7 @@ We can then plot our forecast against the actual values:
 avg_fc %>%
   autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
   autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
-  labs(title = "Forecast for Gold Mini Closing Price") #add title
+  labs(title = "Base Line Forecast for Gold Mini Closing Price") #add title
 ```
 
 As can be seen, our forecast of average price is way off the actual values. We can check how badly this model has done in its forecasting accuracy by using the __accuracy()__ function:
@@ -382,7 +382,7 @@ naive_fc <- naive_fit %>%
 naive_fc %>%
   autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
   autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
-  labs(title = "Forecast for Gold Mini Closing Price") #add title
+  labs(title = "Naive Forecast for Gold Mini Closing Price") #add title
 ```
 
 As we see from the plot our forecast of last price is way off the actual values but much better than the forecast of average price. We can check how badly this model has done, or how much better it is compared to just the average:
@@ -434,7 +434,7 @@ drift_fc <- drift_fit %>%
 drift_fc %>%
   autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
   autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
-  labs(title = "Forecast for Gold Mini Closing Price") #add title
+  labs(title = "Naive with Drift Forecast for Gold Mini Closing Price") #add title
 ```
 
 We can see on the plot a better performance. Let's calculate our forecasting error:
@@ -498,7 +498,7 @@ fc_accuracy_results
 
 
 
-# 2e.v. Fifth Model: Autoregressive Integrated Moving Average (ARIMA)
+# 2e.v. Fifth Model: Autoregressive (AR)
 
 Up to now we used simple forecasting tools ranging from average to naive to naive with a drift. In this next model we will try a model that aims to describe autocorrelations in the data. Autocorrelation measures linear relationship between lagged values of a time series. If we denote $l$ number of lags and then autocorrelation coefficient can be expressed as:
 
@@ -516,7 +516,7 @@ gold_train_df %>% ACF(Price, lag_max = 7)
 
 The values observed in the "acf" column of this tsibble output corresponds to $r_1, ..., r_7$.
 
-In addition to autocorrelation, we also need to understand the concept of stationarity in order for us to be able to run ARIMA model.
+In addition to autocorrelation, we also need to understand the concept of stationarity in order for us to be able to run AR model.
 
 
 
@@ -584,20 +584,186 @@ Next we can determine how many first differences are required as in, is it bette
 gold_train_df %>%
   features(Price, unitroot_ndiffs)
 ```
-We see that 1 difference is sufficient to make data stationary.
-
-In order to build our ARIMA model we need to understand next Autoregressive models and Moving Average models, since ARIMA is the integration of these two.
+We see that 1 difference is sufficient to make data stationary. With this understanding of stationarity, we can start building out AR model.
 
 
 
 
-#### 2e.v.II Autoregressive Models
+#### 2e.v.II Autoregressive (AR) Models
+
+An autoregressive model attempts to forecast the gold mini futures price using a linear combination of past prices, which is effectively a regression of the variable against itself. If $p$ represents the total number of linear combinations of past prices, $c$ is a constant, and $\varepsilon_t$ is white noise, then the model can be expressed as:
+
+$$
+y_t = c + \phi_1 y_{t-1} + \phi_2 y_{t-2} + ... + \phi_p y_{t-p} + \varepsilon_t
+$$
+
+This autoregressive model of order of p is referred to as AR(p) model. In interpreting AR(1) model, for example we conclude that:
+
+if $\phi_1 = 0$ and $c = 0$ then $y_t$ is white noise;
+if $\phi_1 = 1$ and $c = 0$ then $y_t$ is random walk;
+if $\phi_1 = 1$ and $c \neq 0$ then $y_t$ is random walk with drift;
+if $phi_1 < 0$ then $y_t$ tends to oscillate around mean.
+
+AR(p) models are usually restricted to stationary data, which means we have to impose some constraints on the values of $\phi$ as follows:
+
+For AR(1) model, $\phi_1$ lies between -1 and 1. That is $ -1< \phi_1 <1 $.
+For AR(2) model, $\phi_2$ lies between -1 and 1. That is $ -1< \phi_2 <1 $; the sum of $\phi_1$ and $\phi_2$ has to be less than 1 (ie $ \phi_1 + \phi_2 < 1 $); and so does the difference between $\phi_2$ and $\phi_1$ (ie $ \phi_2 - \phi_1 < 1)
+
+For models of higher order, the restrictions are considerably more complicated and we will not considers order of 3 or higher. We also do not need to impose these restrictions manually since __fable__ package does that for us. We will fit both AR(1) and AR(2) models to our smaller training data and then forecast the next 565 days' price behaviour. We will then choose the better fit between the two to compare it against our test set observed values to determine the forecast accuracy as before.
+
+```{r}
+#Use ARIMA() argument within model() function within the fable package
+AR_fit <- gold_train2 %>%
+  model(AR1 = ARIMA(Price ~ pdq(p = 1, d = 1, q= 0)),
+        AR2 = ARIMA(Price ~ pdq(p = 2, d = 1, q= 0))) #ARIMA stands for Autoregressive Integrated Moving Average model. p refers to order for AR, and d refers to differencing we need for stationarity. We are looking at AR(2) model so p is either 1 or 2, and stationarity analysis confirmed that we need differencing of 1, so d=1. q relates to moving average, or MA, and since we are only looking at AR model, we keep q as 0. 
+
+#we then ask for the report of this fit:
+report(AR_fit)
+```
+
+In order to be able to determine the better of the two models, we will choose the lowest AIC, AICc, or BIS values. These are tools used in selecting predictors, and the abbreviations stand for Akaike's Information Criterion (AIC), Corrected Akaike's Information Criterion (AICc), and Schwarz's Bayesian Information Criterion. For details on these see (Hyndman and Athanasopoulos, 2021).
+
+Based on this assessment AR(2) seems to give a better model though the values are very close for either of them. We can fit this model:
+
+```{r}
+AR2_fit <- gold_train2 %>%
+  model(ARIMA(Price ~ pdq(p = 2, d=1, q=0)))
+
+report(AR2_fit)
+```
+
+which gives us an estimate of:
+
+$$
+y_t = 6.6292 - 0.0705 y_{t-1} + 0.0541 y_{t-2}
+$$
+
+We can plot the residuals to see if they are white noise:
+
+```{r}
+#gg_residuals() function will give us the residual plots and ACF plot
+
+AR2_fit %>%
+  gg_tsresiduals()
+```
+We see that all except 2 residual are within the 95% interval around 0. And both count distribution and the residual plot shows that the residuals are likely to be white noise.
+
+Lets check the forecasting accuracy next. we will first forecast to the next 565 days of our AR(2) fitted model and then plot it against our test set to see how well we did:
+
+```{r}
+#forecast using the AR(4) fitted model:
+AR_fc <- AR2_fit %>%
+  forecast(h=565) 
+
+AR_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "AR(2) Forecast for Gold Mini Closing Price") #add title
+```
+
+The forecast seems to be somewhat accurate. Let's see how we did in terms of RMSE and MAE
+
+```{r}
+AR_fc_accuracy <- accuracy(AR_fc, gold_test)
+AR_fc_accuracy
+```
+We see that our typical error is now about 3362 INR in terms of RMSE, and about 2590 INR in terms of MAE which are almost as good as our naive with drift model. We can add this to our results table:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "AR(2)",
+                                        AR_fc_accuracy[,4:5]))
+fc_accuracy_results
+```
+
+Next, instead of using past values themselves, we can try using past forecast errors in an approach called Moving Average (MA) to see if that improves our forecasting.
 
 
 
 
 
 
+
+
+
+
+## 2e.vi. Sixth Model: Moving Average (MA)
+
+The MA model uses past forecast errors in a regression-like linear model. If $q$ is the order of past forecast errors that are white noise $(\varepsilon_t)$, the moving approach model, referred to as MA(q) model, is expressed as:
+
+$$
+y_t = c + \varepsilon_t + \theta_1 \varepsilon_{t-1} + \theta_2 \varepsilon_{t-2} +...+ \theta_q \varepsilon_{t-q}
+$$
+
+Similar to AR(p) model, MA(q) also has constraints around its $\theta$ as follows:
+
+Absolute value of first theta, which is the coefficient of the white noise error observed from one period earlier's forcast has to be less than 1, that is $ |\theta_1| < 1 $. This is because if it is exactly 1, this means all the error observations have the same weight, or if it is higher than 1, then the distant observations have more influence than the more recent ones which does not really make sense. For $\theta$ in MA(1) and MA(2) models we have similar constraints as we do for $\phi$ in AR(1) and AR(2) models.
+
+As before, we will fit the MA(q) model to our smaller training data using __fable__ package and then forecast the next 565 days' price behaviour. We will then compare it against our test set observed values to determine the forecast accuracy.
+
+```{r}
+#Use ARIMA() argument within model() function within the fable package
+MA_fit <- gold_train2 %>%
+  model(MA1 = ARIMA(Price ~ pdq(p=0, d=1, q=1)), #this time we will leave p as 0 and try q = 1 and q=2, with differencing the price data by 1 day, ie d=1.
+        MA2 = ARIMA(Price ~ pdq(p=0, d=1, q=2)))
+
+#we then ask for the report of this fit:
+report(MA_fit)
+```
+
+The AIC, AICc, and BIC values are almost the same but AICc values are lower for MA(2) model despite BIC being higher. Hyndman and Athanasopoulos (2021) argue that AICc is a better metric to use in determining which model is better, so we will adopt MA(2) in our approach here. We can fit this model as follows:
+
+```{r}
+MA2_fit <- gold_train2 %>%
+  model(ARIMA(Price ~ pdq(p=0, d=1, q=2)))
+
+report(MA2_fit)
+```
+
+The fitted model is therefore:
+
+$$
+y_t = 6.3908 + 0.0227 - 0.0653 \varepsilon_{t-1} + 0.0519 \varepsilon_{t-2}
+$$
+
+We can plot the residuals to see if they are white noise:
+
+```{r}
+#gg_residuals() function will give us the residual plots and ACF plot
+
+MA2_fit %>%
+  gg_tsresiduals()
+```
+
+We see that all except 2 residual are within the 95% interval around 0. And both count distribution and the residual plot shows that the residuals are likely to be white noise.
+
+Lets check the forecasting accuracy next. we will first forecast to the next 565 days of our AR(2) fitted model and then plot it against our test set to see how well we did:
+
+```{r}
+#forecast using the AR(4) fitted model:
+MA_fc <- MA2_fit %>%
+  forecast(h=565) 
+
+MA_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "grey") + #add the layer of actual values from the test set
+  labs(title = "MA(2) Forecast for Gold Mini Closing Price") #add title
+```
+
+The forecast seems to be somewhat accurate. Let's see how we did in terms of RMSE and MAE
+
+```{r}
+MA_fc_accuracy <- accuracy(MA_fc, gold_test)
+MA_fc_accuracy
+```
+We see that our typical error has improved to about 3332 INR in terms of RMSE, and to about 2569 INR in terms of MAE which are better than our naive with drift model. We can add this to our results table:
+
+```{r}
+fc_accuracy_results <- bind_rows(fc_accuracy_results,
+                                 tibble(Method = "MA(2)",
+                                        MA_fc_accuracy[,4:5]))
+fc_accuracy_results
+```
 
 
 
