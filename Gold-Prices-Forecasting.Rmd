@@ -13,11 +13,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This report discusses the various attempts at tackling a challenge of forecasting gold mini futures prices relatively accurately. The gold mini futures prices are measures in Indian Rupee (INR) and the data are obtained from: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv which is a time series data frame pre-processed from https://in.investing.com/commodities/gold-mini by Nisarg Chodavadiya.
 
-The Gold Price dataset has 2227 rows and 7 columns. These include Date, Price, Open, High, Low, Volume, and Change. Date starts from 1 January 2014 and ends with 5 August 2022. Price reflects the closing prices for that day, while Open is the opening prices. High and Low gives the highest and lowest prices reached in intra-day trading, and Volume shows the volume of trading for that day. Finally Change shows the percentage change from the previous day's closing price.
+The Gold Price dataset has 2227 rows and 7 columns. These include Date, Price, Open, High, Low, Volume, and Change. Date starts from 1 January 2014 and ends with 5 August 2022, including only the weekdays. Price reflects the closing prices for that day, while Open is the opening prices. High and Low gives the highest and lowest prices reached in intra-day trading, and Volume shows the volume of trading for that day. Finally Change shows the percentage change from the previous day's closing price.
 
-In order to determine a successful predictive algorithm, this work first divides the data into training and test set with 80-20% split. It then divides the training data again into training and validation sets with 80-20% split. All the training is done on this second training set (and sometimes smaller subset of this to ensure an average laptop can run some of the algorithms in a reasonable time) and tested on the test set. The most successful algorithm was then chosen to run on the validation set as a final determination of the predictive success. Success was defined as root mean square error (RMSE), which can effectively be interpreted as a typical error in predicting star rating. 
+In order to determine a successful predictive algorithm, this work first divides the data into training and validation set with 90-10% split. It then divides the training data again into training and test sets with 80-20% split. All the training is done on this second training set and tested on the test set. The most successful algorithm was then chosen to run on the validation set as a final determination of the predictive success. Success was defined as root mean square error (RMSE) and mean absolute error (MAE), which can effectively be interpreted as a typical error in predicting star rating. 
 
-The report is split into 4 areas. Following this Introduction, the Analysis section begins with data exploration, examination, and preparation, and subsequently discusses the definition of sucess for the analysis, and analyses the sucess - or lack thereof - of kNN, user & movie effects, and regularisation approaches. The third section then discusses the modeling results on the validation set and the model performance. Finally the report concludes with a brief summary, its limitations, and suggestions for future work.
+The report is split into 4 areas. Following this Introduction, the Analysis section begins with data, packages, and libraries we need for this project, followed by data exploration and preparation before discussing the definition of success for the analysis. The analysis section then examines 7 different models including ARIMA(p,d,q) in terms of their prediction accuracy. The third section then discusses the modeling results of the most successful model on the validation set and the model performance. Finally the report concludes with a brief summary, its limitations, and suggestions for future work.
 
 
 
@@ -28,7 +28,6 @@ The report is split into 4 areas. Following this Introduction, the Analysis sect
 
 
 # 2. Analysis
-
 
 
 
@@ -219,7 +218,7 @@ We can also check the dimensions of the training and validation sets:
 
 ```{r}
 tibble(training_set = dim(gold_train_df),
-      test_set = dim(gold_validation_df))
+      validation_set = dim(gold_validation_df))
 ```
 and we see that training set has 2825 rows and validation set 314 rows. Both has 7 columns as before.
 
@@ -231,8 +230,8 @@ gold_train2 <- gold_train_df[1:2260,]
 gold_test <- gold_train_df[-(1:2260),]
 
 #we can check the dimensions of our smaller training set and the test set:
-tibble(dim(gold_train2),
-       dim(gold_test))
+tibble(training_set_2 = dim(gold_train2),
+       test_set = dim(gold_test))
 ```
 We see that we have split the data as we intended to.
 
@@ -291,6 +290,11 @@ For non-scale-dependent measures that are a number of approaches including mean 
 ## 2e. Models
 
 We can now begin to build our models using the smaller training set and test their forecasting accuracy against the test set.
+
+
+
+
+
 
 
 
@@ -406,6 +410,11 @@ fc_accuracy_results
 
 
 
+
+
+
+
+
 ### 2e.iii: Third Model: Random Walk with Drift
 
 This is a variation of the naive method whereby the forecasts are not stationary but change overtime, referred to as "drift". Drift is effectively the average of the historical data. This is expressed as:
@@ -456,6 +465,11 @@ fc_accuracy_results
 
 
 
+
+
+
+
+
 ### 2e.iv. Fourth Model: Naive with Drift and with Cross-Validation
 
 So far we used a smaller training set in order to be able to test each training model on the test set. However, instead of dividing the larger training set we created by separating the validation set, we could use cross-validation whereby we use a series of test sets, each consisting of a single observation. The training set that corresponds to that test set includes only the observations before the observation in the test set. This means, no future observations can be used in constructing the forecast. Since small training sets do not yield any reliable training set, the earliest observations are not treated as test sets. This is sometimes called "evaluation on a rolling forecasting origin".
@@ -498,7 +512,13 @@ fc_accuracy_results
 
 
 
-# 2e.v. Fifth Model: Autoregressive (AR)
+
+
+
+
+
+
+### 2e.v. Fifth Model: Autoregressive (AR)
 
 Up to now we used simple forecasting tools ranging from average to naive to naive with a drift. In this next model we will try a model that aims to describe autocorrelations in the data. Autocorrelation measures linear relationship between lagged values of a time series. If we denote $l$ number of lags and then autocorrelation coefficient can be expressed as:
 
@@ -517,6 +537,7 @@ gold_train_df %>% ACF(Price, lag_max = 7)
 The values observed in the "acf" column of this tsibble output corresponds to $r_1, ..., r_7$.
 
 In addition to autocorrelation, we also need to understand the concept of stationarity in order for us to be able to run AR model.
+
 
 
 
@@ -585,6 +606,12 @@ gold_train_df %>%
   features(Price, unitroot_ndiffs)
 ```
 We see that 1 difference is sufficient to make data stationary. With this understanding of stationarity, we can start building out AR model.
+
+
+
+
+
+
 
 
 
@@ -687,7 +714,7 @@ Next, instead of using past values themselves, we can try using past forecast er
 
 
 
-## 2e.vi. Sixth Model: Moving Average (MA)
+### 2e.vi. Sixth Model: Moving Average (MA)
 
 The MA model uses past forecast errors in a regression-like linear model. If $q$ is the order of past forecast errors that are white noise $(\varepsilon_t)$, the moving approach model, referred to as MA(q) model, is expressed as:
 
@@ -766,6 +793,7 @@ fc_accuracy_results
 ```
 
 We can next try combining AR and MA methods to see if we have an improvement.
+
 
 
 
@@ -859,7 +887,79 @@ fc_accuracy_results
 
 
 
+
+## 3. Modelling Results
+
+From the 7 models tested on the test set, it appears that MA(2) was most successful with the lowest RMSE at about 3332 and MAE at about 2569. This is the same as ARIMA(0,1,2) model. We can now apply this model to our validation set to see how successful our model is in its prediction.
+
+```{r}
+#Applying differentiated MA(2) = ARIMA(0,1,2) model to larger training set:
+
+best_model_fc <- gold_train_df %>%
+  model(ARIMA(Price ~ pdq(p = 0,d = 1, q= 2))) %>%
+  forecast(h = 314) #validation set is 314 days
+
+best_model_fc %>%
+  autoplot(gold_train_df, level = NULL) +
+  autolayer(gold_validation_df, Price, colour = "grey") +
+  labs(title = "ARIMA(0,1,2) Final Forecast for Gold Mini Closing Price")
+```
+
+We see that the predictive power is not very good. If we check  how we did in terms of RMSE and MAE:
+
+```{r}
+accuracy(best_model_fc, gold_validation_df)
+```
+
+We see that our typical error is now about 4,130 INR in terms of RMSE, and 3,690 INR in terms of MAE. Interestingly if we extend the MA(2) forecast success we got from the smaller training set to a longer forecast projection of 879 days that combines the test and validation sets we get better accuracy:
+
+```{r}
+#extend the forecast of MA(2) model trained on gold_train2 data set to 879 days:
+ma2_extended_fc <- MA2_fit %>%
+  forecast(h=879) #879 days = 565 days of test set + 314 days of validation set
+
+ma2_extended_fc %>%
+  autoplot(gold_train2, level = NULL) + #add training set's plot to our forecast. Setting level to NULL means it will not give us the default 95% and 80% intervals.
+  autolayer(gold_test, Price, colour = "light grey") +
+  autolayer(gold_validation_df, Price, colour = "dark grey") + #add the layer of actual values from the test set
+  labs(title = "MA(2) Final Forecast for Gold Mini Closing Price") #add title
+
+```
+
+If we check the accuracy:
+
+```{r}
+accuracy(ma2_extended_fc, gold_validation_df)
+```
+
+We see that RMSE is now as low as 1558 and MAE is as low as 1292. The predictive accuracy of the most successful data is due to two lines of thinking. First, differencing closing day prices from the immediately preceding day's closing price ensured we have stationarity. Stationarity, in turn, allowed us to examine how using past forecast errors in linear-regression fashion, which gave us our best model. When trained on the bigger training set, however, the forecasting accuracy of the model dropped. Interestingly, we could see that if we attempt to predict from the smaller training set, our accuracy improved considerably.
+
+
+
+
+
+
+
+
+
+
+
+## 4. Conclusions
+
+This work attempted to identify the best model for predicting gold mini futures closing prices. It did so by dividing the data into training set and validation set at 90-10% split, first, then further dividing the training set into smaller training set and a test-set at 80-20% split. This meant the smaller training set had 72% of the original data, while test set had 18%, and validation set 10%. The success wa defined a the smallest RMSE and MAE, interpreted as typical error in predicting gold mini futures closing price. In total, 7 different models were trained on the smaller training set in Section 2 and tested on the test set. The most successful among those were then validated on the validation set in Section 3.
+
+The work, however, suffers from a number of limitations as not every line of inquiry has been pursued. The work has not explored, and recommends for future research the exploration of dynamic regression models, stochastic trends, and lagged predictors. Equally, it is important to examine the percentage change behaviour and trading volume in these models.
+
+Finally, the data and the references can be found in the references section, below. The code and other models are on github.com/emre-us.
+
+
+
+
+
+
 # References
 Hyndman, R. J., & Koehler, A. B. (2006). Another look at measures of forecast accuracy. International Journal of Forecasting, 22(4), 679–688
 Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice, 3rd edition, OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on 13 Sep 2022
 Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root: How sure are we that economic time series have a unit root? Journal of Econometrics, 54(1-3), 159–178. 
+
+Dataset: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv
