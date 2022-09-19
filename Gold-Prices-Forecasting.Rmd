@@ -3,8 +3,8 @@ title: "Gold Price Forecasting"
 author: "Emre Usenmez - github.com/emre-us"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -51,7 +51,7 @@ if(!require(feasts)) install.packages("feasts")
 if(!require(forecast)) install.packages("forecast")
 if(!require(reshape2)) install.packages("reshapre2")
 if(!require(fable)) install.packages("fable")
-if(!require(tinytex)) install.packages("tinytex")
+
 
 #next load up these packages
 
@@ -61,7 +61,7 @@ library(tsibble) #tibble objects for time series
 library(tidyverse) #for tidy data
 library(lubridate) #for dealing with dates
 library(reshape2) #for reshaping data to long format-useful in plotting multiple time series in same axis
-library(tinytex) #for knitting to pdf
+
 
 #packages for plots and graphics
 library(ggplot2) #for visualisation
@@ -992,6 +992,7 @@ Hyndman, R.J., & Athanasopoulos, G. (2021) Forecasting: principles and practice,
 Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root: How sure are we that economic time series have a unit root? Journal of Econometrics, 54(1-3), 159–178. 
 
 Dataset: https://www.kaggle.com/datasets/nisargchodavadiya/daily-gold-price-20152021-time-series?select=Gold+Price.csv
+
 
 
 
