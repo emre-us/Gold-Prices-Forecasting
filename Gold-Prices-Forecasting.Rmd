@@ -279,7 +279,7 @@ We can then measure the forecast accuracy by summarising forecast errors. There 
 These measurements are useful only if we are not looking to compare between series that involve different units. The two most common ones are mean absolute error (MAE) and root mean squared error (RMSE):
 
 $$
-MAE = \sqrt{\frac{1}{N} \sum \left| \hat{y}_{t} - y_{t} \right|^2 }
+MAE = \frac{1}{N} \sum \left| \hat{y}_{t} - y_{t} \right|
 $$
 and
 

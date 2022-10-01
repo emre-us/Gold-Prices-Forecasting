@@ -1,0 +1,18 @@
+---
+title: "Final Project Comments from Examiners"
+output: html_notebook
+---
+
+
+#Staff Comments
+
+Great job overall with your report. I think that working with data that is strongly correlated with time can be tricky, but you did well in handling this task. I enjoyed the detailed description you provided for each of the model used in the report, and I also found it helpful that you provided several visualizations to clarify the accuracy of these models in your test data.
+
+Good job overall with your code. It was helpful that you used code to automatically install the missing packages. I also found that your script was generally easy to follow, with helpful comments throughout to explain the code. However, there were some minor errors when running the script. For example, line 77 includes some text that should be commented out, as it otherwise causes an error at this line.
+
+I think your equation for MAE as presented in the pdf may be incorrect. The denominator should not be under the square root symbol.
+
+
+##Peer 3 Comments:
+
+The libraries reshape2, fable, feasts, and forecast are good to know. I liked how you commented on what they are for, it was a good call of yours. As a hint, you could start using {r, warning=FALSE, message=FALSE} to remove unnecessary information from the Rmd install packages output to fasten the read. You prompted the train, test, and results into a time series graphic that was very explicative. I am not well versed in it, so I think your report was very insightful, and I praise you for it. Thanks for sharing and journeying with us!
